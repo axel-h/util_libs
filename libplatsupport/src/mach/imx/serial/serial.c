@@ -261,8 +261,8 @@ int uart_init(
 
 #ifdef CONFIG_PLAT_IMX6
 #include <platsupport/plat/mux.h>
-    /* The UART1 on the IMX6 has the problem that the MUX is not correctly set,
-     * and the RX PIN is not routed correctly.
+    /* The UART1 on the IMX6 has the problem that the MUX is not correctly set, and the RX PIN is
+     * not routed correctly.
      */
     if ((defn->id == IMX_UART1) && mux_sys_valid(&ops->mux_sys)) {
         if (mux_feature_enable(&ops->mux_sys, MUX_UART1, 0)) {

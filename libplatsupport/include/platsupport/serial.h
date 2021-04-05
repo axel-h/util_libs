@@ -13,8 +13,9 @@
  **** Serial device flags ****
  *****************************/
 
-/* Auto-send CR(Carriage Return) after each "\n".
- * NOTE: This flag should be set by default. */
+/* Auto-send CR (Carriage Return, "\r") before each "\n". All UART drivers
+ * should set this flag by default, so the UART can be used as a console.
+ */
 #define SERIAL_AUTO_CR BIT(0)
 
 /*****************************/
