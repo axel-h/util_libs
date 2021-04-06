@@ -180,10 +180,8 @@ static int exynos_uart_putchar(ps_chardevice_t *d, int c)
     /* Extract the byte to send, drop any flags. */
     uint8_t byte = (uint8_t)c;
 
-    /* Write out the next character. */
-    internal_uart_tx(reg_base, byte);
-
     if ((byte == '\n') && (d->flags & SERIAL_AUTO_CR)) {
+        internal_uart_tx(vaddr, '\r');
         /* In this case, we should have checked that we had two free bytes in
          * the FIFO before we submitted the first char, however, the FIFO size
          * would need to be considered and this differs between UARTs.
@@ -194,8 +192,9 @@ static int exynos_uart_putchar(ps_chardevice_t *d, int c)
         while (internal_uart_tx_busy(reg_base)) {
             /* busy waiting loop */
         }
-        internal_uart_tx(reg_base, '\r');
     }
+
+    internal_uart_tx(reg_base, byte);
 
     return byte;
 }

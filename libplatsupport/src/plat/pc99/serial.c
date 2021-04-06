@@ -129,18 +129,17 @@ int uart_putchar(ps_chardevice_t* device, int c)
     /* Extract the byte to send, drop any flags. */
     uint8_t byte = (uint8_t)c;
 
-    /* Write out the character, ignore return code. */
-    (void)serial_tx_byte(device, byte);
-
     if (byte == '\n') {
         /* If we output immediately then odds are the transmit buffer will be
          * full, so we have to wait. */
+        (void)serial_tx_byte(device, '\r');
         while (!serial_is_tx_ready(device)) {
             /* busy waiting loop */
         }
-        /* Write out the character, ignore return code. */
-        (void)serial_tx_byte(device, '\r');
     }
+
+    /* Write out the character, ignore return code. */
+    (void)serial_tx_byte(device, byte);
 
     return byte;
 }
