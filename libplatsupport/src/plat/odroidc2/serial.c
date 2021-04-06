@@ -100,8 +100,7 @@ int uart_putchar(ps_chardevice_t *dev, int c)
         internal_uart_busy_wait_tx_ready(reg_base);
     }
 
-    /* TODO: why don't we send the highest bit? */
-    internal_uart_putchar(vaddr, byte & 0x7f);
+    internal_uart_putchar(vaddr, byte);
 
     return byte;
 }
