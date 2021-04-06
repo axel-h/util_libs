@@ -80,14 +80,14 @@ int uart_putchar(ps_chardevice_t *dev, int c)
 
     internal_uart_busy_wait_tx_ready(reg_base);
 
-    /* Add character to the buffer. TODO: why don't we send the highest bit? */
-    internal_uart_putchar(vaddr, byte & 0x7f);
-
     /* SERIAL_AUTO_CR: Send '\r' (CR) before every '\n' (LF). */
     if ((byte == '\n') && (d->flags & SERIAL_AUTO_CR)) {
-        internal_uart_busy_wait_tx_ready(reg_base);
         internal_uart_tx_byte(reg_base, '\r');
+        internal_uart_busy_wait_tx_ready(reg_base);
     }
+
+    /* TODO: why don't we send the highest bit? */
+    internal_uart_putchar(vaddr, byte & 0x7f);
 
     return byte;
 }
