@@ -133,6 +133,15 @@ if(KernelPlatformZynqmpZcu102 OR KernelPlatformZynqmpUltra96)
     target_include_directories(platsupport PUBLIC "plat_include/zynqmp")
 endif()
 
+if(KernelPlatformHikey OR KernelPlatformFVP OR KernelPlatformQEMUArmVirt)
+    target_sources(platsupport PRIVATE "src/drivers/uart_pl011/uart_pl011.c")
+endif()
+
+if(KernelPlatformRpi3 OR KernelPlatformRpi4)
+    target_sources(platsupport PRIVATE "src/drivers/uart_bcm_27xx_28xx/uart_bcm.c")
+    target_include_directories(platsupport PUBLIC "driver-include/uart_bcm_27xx_28xx")
+endif()
+
 if(NOT "${KernelArmMach}" STREQUAL "")
     target_include_directories(platsupport PUBLIC "mach_include/${KernelArmMach}")
 endif()

@@ -87,7 +87,9 @@
 #define INT_ERR   BIT(1)
 #define INT_RX    BIT(0)
 
-#define REG_PTR(base, offset)  ((volatile uint32_t *)((char*)(base) + (offset)))
+#define REG_PTR(base, offset)   ( (volatile uint32_t *)( \
+                                    (uintptr_t)(base) + (offset) ) )
+
 
 static clk_t *clk;
 
@@ -134,26 +136,68 @@ static const struct dev_defn dev_defn[] = {
     UART_DEFN(3),
 };
 
+/*
+ *******************************************************************************
+ * UART access primitives
+ *******************************************************************************
+ */
+
+static int internal_uart_tx_busy(void* reg_base)
+{
+    return *REG_PTR(reg_base, UFRSTAT) & FRSTAT_TX_FULL;
+}
+
+static int internal_uart_tx(void* reg_base, int c)
+{
+    *REG_PTR(reg_base, UTXH) = c;
+}
+
+static uint8_t internal_uart_rx_byte(void *reg_base)
+{
+    return (uint8_t)(*REG_PTR(reg_base, URXH));
+}
+
+static int internal_uart_is_rx_ready(void *reg_base)
+{
+    return *REG_PTR(reg_base, UTRSTAT) & TRSTAT_RXBUF_READY;
+}
+
+/*
+ *******************************************************************************
+ * UART access helpers
+ *******************************************************************************
+ */
+
 static int exynos_uart_putchar(ps_chardevice_t *d, int c)
 {
-    if (*REG_PTR(d->vaddr, UFRSTAT) & FRSTAT_TX_FULL) {
-        /* abort: no room in FIFO */
+    void* reg_base = d->vaddr;
+
+    /* if UART is busy return an error */
+    if (internal_uart_tx_busy(reg_base)) {
         return -1;
-    } else {
-        /* Write out the next character. */
-        *REG_PTR(d->vaddr, UTXH) = c;
-        if (c == '\n' && (d->flags & SERIAL_AUTO_CR)) {
-            /* In this case, We should have checked that we had two free bytes in
-             * the FIFO before we submitted the first char, however, the fifo size
-             * would need to be considered and this differs between UARTs.
-             * To keep things simple, we recognise that it is rare for a '\n' to
-             * be sent when there is insufficient FIFO space and accept the
-             * inefficiencies of spinning, waiting for space.
-             */
-            while (exynos_uart_putchar(d, '\r') < 0);
-        }
-        return c;
     }
+
+    /* Extract the byte to send, drop any flags. */
+    uint8_t byte = (uint8_t)c;
+
+    /* Write out the next character. */
+    internal_uart_tx(reg_base, byte);
+
+    if ((byte == '\n') && (d->flags & SERIAL_AUTO_CR)) {
+        /* In this case, we should have checked that we had two free bytes in
+         * the FIFO before we submitted the first char, however, the FIFO size
+         * would need to be considered and this differs between UARTs.
+         * To keep things simple, we recognize that it is rare for a '\n' to
+         * be sent when there is insufficient FIFO space and accept the
+         * inefficiencies of spinning, waiting for space.
+         */
+        while (internal_uart_tx_busy(reg_base)) {
+            /* busy waiting loop */
+        }
+        internal_uart_tx(reg_base, '\r');
+    }
+
+    return byte;
 }
 
 static int uart_fill_fifo(ps_chardevice_t *d, const char *data, size_t len)
@@ -235,11 +279,13 @@ static void uart_handle_tx_irq(ps_chardevice_t *d)
 
 static int exynos_uart_getchar(ps_chardevice_t *d)
 {
-    if (*REG_PTR(d->vaddr, UTRSTAT) & TRSTAT_RXBUF_READY) {
-        return *REG_PTR(d->vaddr, URXH);
-    } else {
+    void* reg_base = d->vaddr;
+
+    if (!internal_uart_is_rx_ready(reg_base)) {
         return -1;
     }
+
+    return internal_uart_rx_byte(reg_base);
 }
 
 static int uart_read_fifo(ps_chardevice_t *d, char *data, size_t len)

@@ -17,8 +17,17 @@ ssize_t uart_write(
     void *token UNUSED)
 {
     const unsigned char *data = (const unsigned char *)vdata;
-    for (int i = 0; i < count; i++) {
-        if (uart_putchar(d, data[i]) < 0) {
+    for (unsigned int i = 0; i < count; i++) {
+        int ret = uart_putchar(d, data[i]);
+        if (ret < 0) {
+            /* TODO: Some UART drivers implement a busy waiting until there is
+             *       space in the TX FIFO, others return an error in this case.
+             *       We should have a mechanism to allow the user to specify the
+             *       desired behavior, so we don't have to try to guess it. For
+             *       a standard logging console, the behavior is likely to do a
+             *       blocking wait, while a data UART may prefer no to block and
+             *       let the caller handle the waiting.
+             */
             return i;
         }
     }
@@ -33,7 +42,7 @@ ssize_t uart_read(
     void *token UNUSED)
 {
     char *data = (char *)vdata;
-    for (int i = 0; i < count; i++) {
+    for (unsigned int i = 0; i < count; i++) {
         int ret = uart_getchar(d);
         if (EOF == ret) {
             return i;
