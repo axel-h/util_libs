@@ -146,8 +146,7 @@ int uart_init(const struct dev_defn* defn,
     dev->handle_irq = &uart_handle_irq;
     dev->irqs       = defn->irqs;
     dev->ioops      = *ops;
-    /* TODO: SERIAL_TX_NONBLOCKING should not be enabled by default */
-    dev->flags      = SERIAL_AUTO_CR | SERIAL_TX_NONBLOCKING;
+    dev->flags      = SERIAL_AUTO_CR;
 
     regs = uart_get_priv(dev);
 

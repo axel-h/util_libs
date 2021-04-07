@@ -474,8 +474,7 @@ static void zynq_uart_dev_init(
     dev->handle_irq = &uart_handle_irq;
     dev->ioops      = *ops;
 
-    /* TODO: SERIAL_TX_NONBLOCKING should not be enabled by default */
-    dev->flags      = SERIAL_AUTO_CR | SERIAL_TX_NONBLOCKING;
+    dev->flags      = SERIAL_AUTO_CR;
 }
 
 static int zynq_uart_init(
