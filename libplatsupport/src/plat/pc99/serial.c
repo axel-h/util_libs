@@ -90,6 +90,13 @@ static int serial_tx_byte(ps_chardevice_t* device, uint8_t byte)
     return console_io_port_write(device, SERIAL_THR, byte);
 }
 
+static void internal_serial_busy_wait_tx_ready(ps_chardevice_t* device)
+{
+    while (!serial_is_tx_ready(device)) {
+        /* busy waiting loop */
+    }
+}
+
 /*
  *******************************************************************************
  * UART access API
@@ -121,21 +128,30 @@ int uart_getchar(ps_chardevice_t *device)
 
 int uart_putchar(ps_chardevice_t* device, int c)
 {
-    /* Check if serial transmitter is ready. */
-    if (!serial_is_tx_ready(device)) {
-        return -1;
+    /* Check if the TX FIFO has space. If not and SERIAL_TX_NONBLOCKING is set,
+     * then fail the call, otherwise do busy waiting.
+     */
+    if (!serial_is_tx_ready(device))
+        if (d->flags & SERIAL_TX_NONBLOCKING) {
+            return -1;
+        }
+        internal_serial_busy_wait_tx_ready(device);
     }
 
     /* Extract the byte to send, drop any flags. */
     uint8_t byte = (uint8_t)c;
 
-    if (byte == '\n') {
-        /* If we output immediately then odds are the transmit buffer will be
-         * full, so we have to wait. */
+    /* SERIAL_AUTO_CR enables sending a CR before any LF, which is the common
+     * thing to do for a serial terminal. CR/LR are considered an atom, thus a
+     * blocking wait will be used even if SERIAL_TX_NONBLOCKING is set to ensure
+     * LF is sent.
+     * TODO: Check in advance if the TX FIFO has space for two chars if
+     *       SERIAL_TX_NONBLOCKING is set.
+     */
+     if ((byte == '\n') && (d->flags & SERIAL_AUTO_CR)) {
+        /* Write CR, ignore the return code. */
         (void)serial_tx_byte(device, '\r');
-        while (!serial_is_tx_ready(device)) {
-            /* busy waiting loop */
-        }
+        internal_serial_busy_wait_tx_ready(device);
     }
 
     /* Write out the character, ignore return code. */
@@ -161,6 +177,11 @@ uart_init(const struct dev_defn* defn, const ps_io_ops_t* ops, ps_chardevice_t* 
     dev->handle_irq = &uart_handle_irq;
     dev->irqs       = defn->irqs;
     dev->ioops      = *ops;
+    /* TODO:
+     *   - SERIAL_AUTO_CR should be enabled by default
+     *   - SERIAL_TX_NONBLOCKING should not be enabled by default
+     */
+    dev->flags      = SERIAL_TX_NONBLOCKING;
 
     /* Initialise the device. */
 

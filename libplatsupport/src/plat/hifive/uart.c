@@ -57,6 +57,13 @@ static int internal_uart_tx_byte(uart_regs_t* regs, uint8_t c)
     regs->txdata = c & UART_TX_DATA_MASK;
 }
 
+static void internal_uart_busy_wait_tx_ready(uart_regs_t* regs)
+{
+    while (internal_uart_is_tx_fifo_full(regs)) {
+        /* busy waiting loop */
+    }
+}
+
 /*
  *******************************************************************************
  * UART access API
@@ -81,22 +88,29 @@ int uart_putchar(ps_chardevice_t* d, int c)
 {
     uart_regs_t* regs = uart_get_regs(d);
 
-    /* if UART is busy return an error */
+    /* Check if the TX FIFO has space. If not and SERIAL_TX_NONBLOCKING is set,
+     * then fail the call, otherwise do busy waiting.
+     */
     if (internal_uart_is_tx_fifo_full(regs)) {
-        return -1;
+        if (d->flags & SERIAL_TX_NONBLOCKING) {
+            return -1;
+        }
+        internal_uart_busy_wait_tx_ready(regs);
     }
 
     /* Extract the byte to send, drop any flags. */
     uint8_t byte = (uint8_t)c;
 
-    if (byte == '\n') {
+    /* SERIAL_AUTO_CR enables sending a CR before any LF, which is the common
+     * thing to do for a serial terminal. CR/LR are considered an atom, thus a
+     * blocking wait will be used even if SERIAL_TX_NONBLOCKING is set to ensure
+     * LF is sent.
+     * TODO: Check in advance if the TX FIFO has space for two chars if
+     *       SERIAL_TX_NONBLOCKING is set.
+     */
+    if ((byte == '\n') && (d->flags & SERIAL_AUTO_CR)) {
         internal_uart_tx_byte(regs, '\r');
-        /* If SERIAL_AUTO_CR is enabled, we assume this UART is used as a
-         * console, so blocking is fine here.
-         */
-        while (internal_uart_is_tx_fifo_full(regs)) {
-            /* busy waiting loop */
-        }
+        internal_uart_busy_wait_tx_ready(regs);
     }
 
     internal_uart_tx_byte(regs, byte);
@@ -131,7 +145,8 @@ int uart_init(const struct dev_defn* defn,
     dev->handle_irq = &uart_handle_irq;
     dev->irqs       = defn->irqs;
     dev->ioops      = *ops;
-    dev->flags      = SERIAL_AUTO_CR;
+    /* TODO: SERIAL_TX_NONBLOCKING should not be enabled by default */
+    dev->flags      = SERIAL_AUTO_CR | SERIAL_TX_NONBLOCKING;
 
     uart_regs_t* regs = uart_get_regs(dev);
 

@@ -17,17 +17,18 @@ ssize_t uart_write(
     void *token UNUSED)
 {
     const unsigned char *data = (const unsigned char *)vdata;
-    for (int i = 0; i < count; i++) {
-        /* TODO: Some UART drivers implement a busy waiting until there is space
-         *       in the TX FIFO, others return an error in this case. We should
-         *       have a mechanism to allow the user to specify the desired
-         *       behavior, so we don't have to try to guess it. For a standard
-         *       logging console, the behavior is likely to do a blocking wait,
-         *       while a data UART may prefer nog to block and let the caller
-         *       handle the waiting.
+    for (unsigned int i = 0; i < count; i++) {
+        /* Call the UART driver, it is supposed to implement the handling for
+         * the flags SERIAL_TX_NONBLOCKING and SERIAL_AUTO_CR properly.
          */
         int ret = uart_putchar(d, data[i]);
         if (ret < 0) {
+            /* There is nothing we can do, so abort and return how much data we
+             * could send. Unfortunately, we can return the actual error code,
+             * so the caller wont know what exactly failed. However, when
+             * SERIAL_TX_NONBLOCKING is enabled, it's likely that the TX FIFO is
+             * full so the caller should wait and send the remaining data.
+             */
             return i;
         }
     }

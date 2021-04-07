@@ -217,7 +217,7 @@ int uart_putchar(
 
     /* Extract the byte to send, drop any flags. */
     uint8_t byte = (uint8_t)c;
-    int send_cr = (byte == '\n');
+    int send_cr = ((byte == '\n') && (d->flags & SERIAL_AUTO_CR));
 
     /* Usually we send one char only and check UART_SR_TFUL to see if the TX
      * FIFO is full. If we have to send CR+LF, then check if there is space for
@@ -225,8 +225,16 @@ int uart_putchar(
      * trigger level is 63 and this bit is set if the FIFO level is greater or
      * equal the trigger level.
      */
-    if (regs->sr & (send_cr ? UART_SR_TTRIG : UART_SR_TFUL)) {
-        return -1; /* not enough space in the FIFO */
+    unsigned int fifo_flag = send_cr ? UART_SR_TTRIG : UART_SR_TFUL;
+    if (!(regs->sr & fifo_flag))
+    {
+        if (d->flags & SERIAL_TX_NONBLOCKING)
+        {
+            return -1; /* not enough space in the FIFO */
+        }
+        while (!(regs->sr & fifo_flag)) {
+            /* do a busy-waiting loop */
+        }
     }
 
     /* save imr */
@@ -466,7 +474,8 @@ static void zynq_uart_dev_init(
     dev->handle_irq = &uart_handle_irq;
     dev->ioops      = *ops;
 
-    dev->flags      = SERIAL_AUTO_CR;
+    /* TODO: SERIAL_TX_NONBLOCKING should not be enabled by default */
+    dev->flags      = SERIAL_AUTO_CR | SERIAL_TX_NONBLOCKING;
 }
 
 static int zynq_uart_init(
