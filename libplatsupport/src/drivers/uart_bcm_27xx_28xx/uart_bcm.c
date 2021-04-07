@@ -82,6 +82,13 @@ static uint8_t internal_uart_rx_byte(uart_bcm_regs_t *regs)
     return (uint8_t)(regs->mu_io);
 }
 
+static void internal_uart_busy_wait_tx_ready(void *reg_base)
+{
+    while (!internal_uart_is_tx_done(reg_base)) {
+        /* busy waiting loop */
+    }
+}
+
 /*
  *******************************************************************************
  * UART access API
@@ -92,12 +99,30 @@ int uart_putchar(ps_chardevice_t *dev, int c)
 {
     uart_bcm_regs_t *regs = get_uart_regs(dev);
 
-    while (!internal_uart_is_tx_done(regs)) {
-        /* busy waiting loop */
+    /* Check if the TX FIFO has space. If not and SERIAL_TX_NONBLOCKING is set,
+     * then fail the call, otherwise do busy waiting.
+     */
+    if (!internal_uart_is_tx_done(regs))
+        if (d->flags & SERIAL_TX_NONBLOCKING) {
+            return -1;
+        }
+        internal_uart_busy_wait_tx_ready(regs);
     }
 
     /* Extract the byte to send, drop any flags. */
     uint8_t byte = (uint8_t)c;
+
+    /* SERIAL_AUTO_CR enables sending a CR before any LF, which is the common
+     * thing to do for a serial terminal. CR/LR are considered an atom, thus a
+     * blocking wait will be used even if SERIAL_TX_NONBLOCKING is set to ensure
+     * LF is sent.
+     * TODO: Check in advance if the TX FIFO has space for two chars if
+     *       SERIAL_TX_NONBLOCKING is set.
+     */
+    if ((byte == '\n') && (d->flags & SERIAL_AUTO_CR)) {
+        internal_uart_tx_byte(regs, '\r');
+        internal_uart_busy_wait_tx_ready(regs);
+    }
 
     internal_uart_tx_byte(regs, byte);
 

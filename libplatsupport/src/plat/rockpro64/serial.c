@@ -75,11 +75,26 @@ int uart_putchar(ps_chardevice_t *dev, int c)
 {
     void *reg_base = dev->vaddr;
 
+    /* Check if the TX FIFO has space. If not and SERIAL_TX_NONBLOCKING is set,
+     * then fail the call, otherwise do busy waiting.
+     */
+    if (!internal_uart_is_tx_fifo_empty(reg_base))
+        if (d->flags & SERIAL_TX_NONBLOCKING) {
+            return -1;
+        }
+        internal_uart_busy_wait_tx_ready(reg_base);
+    }
+
     /* Extract the byte to send, drop any flags. */
     uint8_t byte = (uint8_t)c;
 
-    internal_uart_busy_wait_tx_ready(reg_base);
-
+    /* SERIAL_AUTO_CR enables sending a CR before any LF, which is the common
+     * thing to do for a serial terminal. CR/LR are considered an atom, thus a
+     * blocking wait will be used even if SERIAL_TX_NONBLOCKING is set to ensure
+     * LF is sent.
+     * TODO: Check in advance if the TX FIFO has space for two chars if
+     *       SERIAL_TX_NONBLOCKING is set.
+     */
     if ((byte == '\n') && (d->flags & SERIAL_AUTO_CR)) {
         internal_uart_tx_byte(reg_base, '\r');
         internal_uart_busy_wait_tx_ready(reg_base);

@@ -162,6 +162,13 @@ static int internal_uart_is_rx_ready(void *reg_base)
     return *REG_PTR(reg_base, UTRSTAT) & TRSTAT_RXBUF_READY;
 }
 
+static void internal_uart_busy_wait_tx_ready(void* reg_base)
+{
+    while (internal_uart_tx_busy(reg_base)) {
+        /* busy waiting loop */
+    }
+}
+
 /*
  *******************************************************************************
  * UART access helpers
@@ -172,26 +179,29 @@ static int exynos_uart_putchar(ps_chardevice_t *d, int c)
 {
     void* reg_base = d->vaddr;
 
-    /* if UART is busy return an error */
-    if (internal_uart_tx_busy(reg_base)) {
-        return -1;
+    /* Check if the TX FIFO has space. If not and SERIAL_TX_NONBLOCKING is set,
+     * then fail the call, otherwise do busy waiting.
+     */
+    if (internal_uart_tx_busy(reg_base))
+        if (d->flags & SERIAL_TX_NONBLOCKING) {
+            return -1;
+        }
+        internal_uart_busy_wait_tx_ready(reg_base);
     }
 
     /* Extract the byte to send, drop any flags. */
     uint8_t byte = (uint8_t)c;
 
+    /* SERIAL_AUTO_CR enables sending a CR before any LF, which is the common
+     * thing to do for a serial terminal. CR/LR are considered an atom, thus a
+     * blocking wait will be used even if SERIAL_TX_NONBLOCKING is set to ensure
+     * LF is sent.
+     * TODO: Check in advance if the TX FIFO has space for two chars if
+     *       SERIAL_TX_NONBLOCKING is set.
+     */
     if ((byte == '\n') && (d->flags & SERIAL_AUTO_CR)) {
         internal_uart_tx(vaddr, '\r');
-        /* In this case, we should have checked that we had two free bytes in
-         * the FIFO before we submitted the first char, however, the FIFO size
-         * would need to be considered and this differs between UARTs.
-         * To keep things simple, we recognize that it is rare for a '\n' to
-         * be sent when there is insufficient FIFO space and accept the
-         * inefficiencies of spinning, waiting for space.
-         */
-        while (internal_uart_tx_busy(reg_base)) {
-            /* busy waiting loop */
-        }
+        internal_uart_busy_wait_tx_ready(reg_base);
     }
 
     internal_uart_tx(reg_base, byte);
@@ -526,7 +536,8 @@ static void chardevice_init(ps_chardevice_t *dev, void *vaddr, const int *irqs)
     dev->write      = &exynos_uart_write;
     dev->handle_irq = &uart_handle_irq;
     dev->irqs       = irqs;
-    dev->flags      = SERIAL_AUTO_CR;
+    /* TODO: SERIAL_TX_NONBLOCKING should not be enabled by default */
+    dev->flags      = SERIAL_AUTO_CR | SERIAL_TX_NONBLOCKING;
     /* TODO */
     dev->clk        = NULL;
 }
