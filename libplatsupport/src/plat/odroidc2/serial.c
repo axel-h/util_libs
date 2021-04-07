@@ -63,9 +63,8 @@ int uart_getchar(ps_chardevice_t *dev)
 {
     void* reg_base = dev->vaddr;
 
-    /* this can potentially block forever if nobody sends anything. */
-    while (internal_uart_is_rx_empty(reg_base) {
-        /* busy waiting loop */
+    if (internal_uart_is_rx_empty(reg_base) {
+        return -1;
     }
 
     return internal_uart_rx_byte(reg_base);
