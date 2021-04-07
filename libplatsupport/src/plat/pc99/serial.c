@@ -177,11 +177,7 @@ uart_init(const struct dev_defn* defn, const ps_io_ops_t* ops, ps_chardevice_t* 
     dev->handle_irq = &uart_handle_irq;
     dev->irqs       = defn->irqs;
     dev->ioops      = *ops;
-    /* TODO:
-     *   - SERIAL_AUTO_CR should be enabled by default
-     *   - SERIAL_TX_NONBLOCKING should not be enabled by default
-     */
-    dev->flags      = SERIAL_TX_NONBLOCKING;
+    dev->flags      = SERIAL_AUTO_CR;
 
     /* Initialise the device. */
 

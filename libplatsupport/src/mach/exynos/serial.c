@@ -536,8 +536,7 @@ static void chardevice_init(ps_chardevice_t *dev, void *vaddr, const int *irqs)
     dev->write      = &exynos_uart_write;
     dev->handle_irq = &uart_handle_irq;
     dev->irqs       = irqs;
-    /* TODO: SERIAL_TX_NONBLOCKING should not be enabled by default */
-    dev->flags      = SERIAL_AUTO_CR | SERIAL_TX_NONBLOCKING;
+    dev->flags      = SERIAL_AUTO_CR;
     /* TODO */
     dev->clk        = NULL;
 }
