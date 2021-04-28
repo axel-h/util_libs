@@ -120,18 +120,18 @@ if(KernelPlatformImx8mq-evk OR KernelPlatformImx8mm-evk)
         "src/plat/imx8m/clock.c"
     )
 
-    target_include_directories(platsupport PUBLIC plat_include/imx8m)
+    target_include_directories(platsupport PUBLIC "plat_include/imx8m")
 endif()
 
 if(KernelPlatformZynqmpZcu102 OR KernelPlatformZynqmpUltra96)
     # This still needs to be cleaned up, so there is a mach folder "zynymq" and
     # the board specific folders "zcu102" and "ultra96". Then we don't need to
     # include this folder here explicitly
-    target_include_directories(platsupport PUBLIC plat_include/zynqmp)
+    target_include_directories(platsupport PUBLIC "plat_include/zynqmp")
 endif()
 
 if(NOT "${KernelArmMach}" STREQUAL "")
-    target_include_directories(platsupport PUBLIC mach_include/${KernelArmMach})
+    target_include_directories(platsupport PUBLIC "mach_include/${KernelArmMach}")
 endif()
 
 # special handling for "arm_hyp", it's an add-on-hack over "aarch32"
@@ -143,10 +143,10 @@ endif()
 target_include_directories(
     platsupport
     PUBLIC
-        include
-        plat_include/${KernelPlatform}
-        sel4_arch_include/${_inc_folder_KernelSel4Arch}
-        arch_include/${KernelArch}
+        "include"
+        "plat_include/${KernelPlatform}"
+        "sel4_arch_include/${_inc_folder_KernelSel4Arch}"
+        "arch_include/${KernelArch}"
 )
 
 target_link_libraries(
