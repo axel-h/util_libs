@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: BSD-2-Clause
 #
 
-cmake_minimum_required(VERSION 3.7.2)
+cmake_minimum_required(VERSION 3.12)
 
 project(libplatsupport C)
 
@@ -37,6 +37,7 @@ config_choice(
 file(
     GLOB
         deps
+        CONFIGURE_DEPENDS
         src/mach/${KernelArmMach}/*.c
         src/plat/${KernelPlatform}/*.c
         src/*.c
