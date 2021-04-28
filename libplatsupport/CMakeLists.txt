@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: BSD-2-Clause
 #
 
-cmake_minimum_required(VERSION 3.7.2)
+cmake_minimum_required(VERSION 3.12)
 
 project(libplatsupport C)
 
@@ -46,13 +46,14 @@ endif()
 file(
     GLOB
         deps
+        CONFIGURE_DEPENDS
         src/plat/${KernelPlatform}/*.c
         src/*.c
         src/plat/${KernelPlatform}/acpi/*.c
 )
 
 if(NOT ${LibPlatSupportMach} STREQUAL "")
-    file(GLOB lib_deps "src/mach/${LibPlatSupportMach}/*.c")
+    file(GLOB lib_deps CONFIGURE_DEPENDS "src/mach/${LibPlatSupportMach}/*.c")
     list(APPEND deps ${lib_deps})
 endif()
 

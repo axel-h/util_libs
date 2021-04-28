@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: BSD-2-Clause
 #
 
-cmake_minimum_required(VERSION 3.8.2)
+cmake_minimum_required(VERSION 3.12)
 
 project(libethdrivers C)
 
@@ -71,6 +71,7 @@ endif()
 file(
     GLOB
         sources
+        CONFIGURE_DEPENDS
         src/plat/${PlatPrefix}/*.c
         src/plat/${PlatPrefix}/uboot/*.c
         src/plat/${PlatPrefix}/cpsw/*.c
