@@ -184,7 +184,7 @@ target_include_directories(
 foreach(module IN LISTS irqchip_modules)
     # Using target_link_libraries() is a bit of a hack, target_link_options()
     # would be the better way, but this requires CMake v3.13.
-    target_link_libraries(platsupport "-Wl,--undefined=${module}_ptr")
+    target_link_libraries(platsupport "LINKER:--undefined=${module}_ptr")
 endforeach()
 
 target_link_libraries(platsupport muslc utils fdt sel4_autoconf platsupport_Config)
