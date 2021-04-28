@@ -16,6 +16,16 @@ if(NOT ${PLATSUPPORT_HELPERS} STREQUAL "")
     include(${PLATSUPPORT_HELPERS})
 endif()
 
+add_library(
+    platsupport
+    EXCLUDE_FROM_ALL
+    "src/fdt.c"
+    "src/io.c"
+    "src/local_time_manager.c"
+    "src/serial.c"
+    "src/tqueue.c"
+)
+
 set(configure_string "")
 
 config_choice(
@@ -34,28 +44,35 @@ config_choice(
     "ega;LibPlatSupportX86ConsoleDeviceEGA;LIB_PLAT_SUPPORT_SERIAL_TEXT_EGA;KernelPlatPC99"
 )
 
+add_config_library(platsupport "${configure_string}")
+
 file(
     GLOB
-        deps
+        platsupport_src
         CONFIGURE_DEPENDS
-        src/mach/${KernelArmMach}/*.c
-        src/plat/${KernelPlatform}/*.c
-        src/*.c
-        src/plat/${KernelPlatform}/acpi/*.c
+        "src/mach/${KernelArmMach}/*.c"
+        "src/plat/${KernelPlatform}/*.c"
+        "src/plat/${KernelPlatform}/acpi/*.c"
 )
 
+target_sources(platsupport PRIVATE ${platsupport_src})
+
 if(${KernelArch} STREQUAL "arm")
-    list(APPEND deps src/arch/arm/clock.c)
-    list(APPEND deps src/arch/arm/delay.c)
-    list(APPEND deps src/arch/arm/dma330.c)
-    list(APPEND deps src/arch/arm/i2c.c)
-    list(APPEND deps src/arch/arm/i2c_bitbang.c)
-    list(APPEND deps src/arch/arm/generic_timer.c)
-    list(APPEND deps src/arch/arm/irqchip/gic.c)
-    list(APPEND deps src/arch/arm/irqchip/tegra.c)
-    list(APPEND deps src/arch/arm/irqchip/gicv3.c)
-    list(APPEND deps src/arch/arm/irqchip/avic.c)
-    list(APPEND deps src/arch/arm/irqchip/omap3.c)
+    target_sources(
+        platsupport
+        PRIVATE
+        "src/arch/arm/clock.c"
+        "src/arch/arm/delay.c"
+        "src/arch/arm/dma330.c"
+        "src/arch/arm/i2c.c"
+        "src/arch/arm/i2c_bitbang.c"
+        "src/arch/arm/generic_timer.c"
+        "src/arch/arm/irqchip/gic.c"
+        "src/arch/arm/irqchip/tegra.c"
+        "src/arch/arm/irqchip/gicv3.c"
+        "src/arch/arm/irqchip/avic.c"
+        "src/arch/arm/irqchip/omap3.c"
+    )
     # Link the IRQ chip parser modules
     list(
         APPEND
@@ -64,27 +81,26 @@ if(${KernelArch} STREQUAL "arm")
 --undefined=fsl_avic_ptr,--undefined=ti_omap3_ptr"
     )
 elseif(${KernelArch} STREQUAL "x86")
-    list(APPEND deps src/arch/x86/delay.c)
-    list(APPEND deps src/arch/x86/tsc.c)
+    target_sources(platsupport PRIVATE "src/arch/x86/delay.c" "src/arch/x86/tsc.c")
 elseif(${KernelArch} STREQUAL "riscv")
-    list(APPEND deps src/arch/riscv/irqchip/plic.c)
+    target_sources(platsupport PRIVATE "src/arch/riscv/irqchip/plic.c")
     list(APPEND irqchip_modules "-Wl,--undefined=riscv_plic_ptr")
 endif()
 
 if(KernelPlatformQEMUArmVirt)
     if(KernelArmExportPCNTUser AND KernelArmExportPTMRUser)
-        list(APPEND deps src/arch/arm/generic_ltimer.c)
+        target_sources(platsupport PRIVATE "src/arch/arm/generic_ltimer.c")
     endif()
 endif()
 
 if(KernelPlatformExynos5422)
-    list(APPEND deps src/mach/${KernelArmMach}/clock/exynos_5422_clock.c)
+    target_sources(platsupport PRIVATE "src/mach/${KernelArmMach}/clock/exynos_5422_clock.c")
 elseif(KernelPlatformExynos4 OR KernelPlatformExynos5410 OR KernelPlatformExynos5250)
-    list(APPEND deps src/mach/${KernelArmMach}/clock/exynos_common_clock.c)
+    target_sources(platsupport PRIVATE "src/mach/${KernelArmMach}/clock/exynos_common_clock.c")
 endif()
 
 if(KernelPlatImx6 OR KernelPlatformImx7Sabre OR KernelPlatformKZM)
-    list(APPEND deps src/mach/${KernelArmMach}/epit/epit.c)
+    target_sources(platsupport PRIVATE "src/mach/${KernelArmMach}/epit/epit.c")
 endif()
 
 if(
@@ -93,23 +109,17 @@ if(
     OR KernelPlatformImx8mq-evk
     OR KernelPlatformImx8mm-evk
 )
-    list(APPEND deps src/mach/${KernelArmMach}/serial/serial.c)
+    target_sources(platsupport PRIVATE "src/mach/${KernelArmMach}/serial/serial.c")
 endif()
 
 if(KernelPlatformImx8mq-evk OR KernelPlatformImx8mm-evk)
-    list(APPEND deps src/plat/imx8m/chardev.c)
-    # There's no clock driver at the moment, but this is to allow the
-    # libethdrivers to build for imx8mq
-    list(APPEND deps src/plat/imx8m/clock.c)
-endif()
+    target_sources(
+        platsupport PRIVATE "src/plat/imx8m/chardev.c"
+        # There's no clock driver at the moment, but this is to allow the
+        # libethdrivers to build for imx8mq
+        "src/plat/imx8m/clock.c"
+    )
 
-list(SORT deps)
-
-add_config_library(platsupport "${configure_string}")
-
-add_library(platsupport EXCLUDE_FROM_ALL ${deps})
-
-if(KernelPlatformImx8mq-evk OR KernelPlatformImx8mm-evk)
     target_include_directories(platsupport PUBLIC plat_include/imx8m)
 endif()
 
