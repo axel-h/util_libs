@@ -57,16 +57,20 @@ if(NOT ${LibPlatSupportMach} STREQUAL "")
 endif()
 
 if(KernelArchARM)
-    list(APPEND deps src/arch/arm/clock.c)
-    list(APPEND deps src/arch/arm/delay.c)
-    list(APPEND deps src/arch/arm/dma330.c)
-    list(APPEND deps src/arch/arm/i2c.c)
-    list(APPEND deps src/arch/arm/i2c_bitbang.c)
-    list(APPEND deps src/arch/arm/generic_timer.c)
-    list(APPEND deps src/arch/arm/irqchip/gic.c)
-    list(APPEND deps src/arch/arm/irqchip/tegra.c)
-    list(APPEND deps src/arch/arm/irqchip/gicv3.c)
-    list(APPEND deps src/arch/arm/irqchip/omap3.c)
+    list(
+        APPEND
+        deps
+        src/arch/arm/clock.c
+        src/arch/arm/delay.c
+        src/arch/arm/dma330.c
+        src/arch/arm/i2c.c
+        src/arch/arm/i2c_bitbang.c
+        src/arch/arm/generic_timer.c
+        src/arch/arm/irqchip/gic.c
+        src/arch/arm/irqchip/tegra.c
+        src/arch/arm/irqchip/gicv3.c
+        src/arch/arm/irqchip/omap3.c
+    )
     # Link the IRQ chip parser modules
     list(
         APPEND
@@ -75,8 +79,7 @@ if(KernelArchARM)
 --undefined=fsl_avic_ptr,--undefined=ti_omap3_ptr"
     )
 elseif(KernelArchX86)
-    list(APPEND deps src/arch/x86/delay.c)
-    list(APPEND deps src/arch/x86/tsc.c)
+    list(APPEND deps src/arch/x86/delay.c src/arch/x86/tsc.c)
 elseif(KernelArchRiscV)
     list(APPEND deps src/arch/riscv/irqchip/plic.c)
     list(APPEND irqchip_modules "-Wl,--undefined=riscv_plic_ptr")
