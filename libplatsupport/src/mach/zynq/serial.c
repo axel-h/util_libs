@@ -213,33 +213,63 @@ int uart_putchar(
     ps_chardevice_t *d,
     int c)
 {
-    int ret = -1;
     zynq_uart_regs_t *regs = zynq_uart_get_priv(d);
 
+    /* Extract the byte to send, drop any flags. */
+    uint8_t byte = (uint8_t)c;
+    int send_cr = (byte == '\n');
+
+    /* Usually we send one char only and check UART_SR_TFUL to see if the TX
+     * FIFO is full. If we have to send CR+LF, then check if there is space for
+     * 2 bytes in the TX FIFO via UART_SR_TTRIG. This works because the TX
+     * trigger level is 63 and this bit is set if the FIFO level is greater or
+     * equal the trigger level.
+     */
+    if (regs->sr & (send_cr ? UART_SR_TTRIG : UART_SR_TFUL)) {
+        return -1; /* not enough space in the FIFO */
+    }
+
+    /* save imr */
     uint32_t imr = regs->imr;
     regs->idr = imr;
 
-    if (c == '\n' && (d->flags & SERIAL_AUTO_CR)) {
-        /* check if 2 bytes are free - tx trigger level is 63 and
-         * this bit is set if the fifo level is >= the trigger level
+    if (send_cr)
+    {
+        /* Send CR+LF (='\r\n'). We have checked above that there is enough
+         * space in the FIFO to send two chars.
          */
-        if (!(regs->sr & UART_SR_TTRIG)) {
-
-            regs->fifo = '\r';
-            regs->fifo = '\n';
-
-            ret = '\n';
-        }
-    } else if (!(regs->sr & UART_SR_TFUL)) {
-        regs->fifo = c;
-        ret = c;
+        regs->fifo = '\r';
     }
 
-    while ((regs->sr & (UART_SR_TEMPTY | UART_SR_TACTIVE)) != UART_SR_TEMPTY);
+    regs->fifo = byte;
+
+    /* It is questionable why the initial implementation drains the FIFO now,
+     * but we keep this behavior. Maybe this is intended to have a guarantee
+     * that any char accepted by putchar() is really printed before the
+     * function returns. Thus no log data shows up asynchronously because the
+     * FIFO drains while the CPU is doing something else.
+     *
+     * Potential improvement for the serial subsystem is defining more flags
+     * besides SERIAL_AUTO_CR that allow controlling the behavior externally
+     * and thus align all platform implementation:
+     *
+     * - SERIAL_DO_NOT_BLOCK could disable putchar() blocking initially if the
+     *   FIFO is full. It would return an error in this case. The flag could
+     *   also be SERIAL_BLOCK and the recommendation is to always set it.
+     *
+     * - SERIAL_DRAIN_FIFO could make putchar() always drain the FIFO before
+     *   leaving. For a UART used for logging, this could be useful to give a
+     *   guarantee that logs printed before the code continues.
+     */
+
+    while ((regs->sr & (UART_SR_TEMPTY | UART_SR_TACTIVE)) != UART_SR_TEMPTY)
+    {
+        /* busy waiting loop */
+    }
 
     regs->ier = imr;
 
-    return ret;
+    return byte;
 }
 
 static void uart_handle_irq(

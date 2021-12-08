@@ -94,6 +94,12 @@ struct tk1_uart_regs {
 };
 typedef volatile struct tk1_uart_regs tk1_uart_regs_t;
 
+/*
+ *******************************************************************************
+ * UART access primitives
+ *******************************************************************************
+ */
+
 static inline tk1_uart_regs_t*
 tk1_uart_get_priv(ps_chardevice_t *d)
 {
@@ -139,6 +145,24 @@ tk1_uart_set_rbr_irq(tk1_uart_regs_t *regs, bool enable)
     regs->ier_dlab = ier;
 }
 
+static int
+internal_uart_tx_busy(tk1_uart_regs_t* regs)
+{
+    return ((regs->lsr & LSR_THRE_EMPTY) != LSR_THRE_EMPTY);
+}
+
+static int
+internal_uart_tx(tk1_uart_regs_t* regs, uint8_t c)
+{
+    regs->thr_dlab = c;
+}
+
+/*
+ *******************************************************************************
+ * UART access API
+ *******************************************************************************
+ */
+
 int uart_getchar(ps_chardevice_t *d)
 {
     tk1_uart_regs_t* regs = tk1_uart_get_priv(d);
@@ -155,19 +179,25 @@ int uart_getchar(ps_chardevice_t *d)
 int uart_putchar(ps_chardevice_t* d, int c)
 {
     tk1_uart_regs_t* regs = tk1_uart_get_priv(d);
-    uint32_t lsr = regs->lsr;
 
-    if (((lsr & LSR_THRE_EMPTY) == LSR_THRE_EMPTY)) {
-        if (c == '\n' && (d->flags & SERIAL_AUTO_CR)) {
-            uart_putchar(d, '\r');
-        }
-
-        regs->thr_dlab = (uint8_t) c;
-
-        return c;
-    } else {
+    /* if UART is busy return an error */
+    if (internal_uart_tx_busy(regs)) {
         return -1;
     }
+
+    /* Extract the byte to send, drop any flags. */
+    uint8_t byte = (uint8_t)c;
+
+    if (byte == '\n') {
+        internal_uart_tx(regs, '\r');
+        if (internal_uart_tx_busy(regs)) {
+            return -1;
+        }
+    }
+
+    internal_uart_tx(regs, byte);
+
+    return byte;
 }
 
 static void

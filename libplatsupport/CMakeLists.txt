@@ -150,6 +150,16 @@ if(KernelPlatformZynqmp)
     target_include_directories(platsupport PUBLIC plat_include/zynqmp)
 endif()
 
+if(KernelPlatformHikey OR KernelPlatformFVP OR KernelPlatformQEMUArmVirt)
+    target_sources(platsupport PRIVATE "src/drivers/uart_pl011/uart_pl011.c")
+endif()
+
+# ToDo: unify RasPi3 and RasPi4
+# if(KernelPlatformRpi3 OR KernelPlatformRpi4)
+#     target_sources(platsupport PRIVATE "src/drivers/uart_raspi/uart_raspi.c")
+#     target_include_directories(platsupport PUBLIC "driver-include/uart_raspi")
+# endif()
+
 if(NOT "${LibPlatSupportMach}" STREQUAL "")
     target_include_directories(platsupport PUBLIC mach_include/${LibPlatSupportMach})
 endif()

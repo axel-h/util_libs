@@ -26,7 +26,8 @@ ssize_t uart_write(
          *       while a data UART may prefer nog to block and let the caller
          *       handle the waiting.
          */
-        if (uart_putchar(d, data[i]) < 0) {
+        int ret = uart_putchar(d, data[i]);
+        if (ret < 0) {
             return i;
         }
     }
@@ -41,7 +42,7 @@ ssize_t uart_read(
     void *token UNUSED)
 {
     char *data = (char *)vdata;
-    for (int i = 0; i < count; i++) {
+    for (unsigned int i = 0; i < count; i++) {
         int ret = uart_getchar(d);
         if (EOF == ret) {
             return i;
