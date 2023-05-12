@@ -52,8 +52,15 @@ config_string(
     UNQUOTE
 )
 
-config_option(LibEthdriverPicoTCBAsyncDriver LIB_PICOTCP_ASYNC_DRIVER "Async driver for PicoTcp
-    Use an async instead of a polling driver for PicoTCP." DEFAULT ON)
+config_option(
+    LibEthdriverPicoTCBAsyncDriver
+    LIB_PICOTCP_ASYNC_DRIVER
+    "Async driver for PicoTcp
+    Use the driver in an async mode instead of polling driver PicoTCP."
+    DEFAULT
+    ON
+)
+
 mark_as_advanced(
     LibEthdriverRXDescCount
     LibEthdriverTXDescCount
