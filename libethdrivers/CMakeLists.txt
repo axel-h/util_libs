@@ -114,19 +114,18 @@ if(KernelPlatformTx2)
     target_link_libraries(ethdrivers platsupportports)
 endif()
 
-# Provide the driver modules by forcing the linker to put these symbols in the
-# library, instead of discarding them as unused. Using target_link_libraries()
-# is a bit of a hack, target_link_options() would be the better way, but this
-# requires CMake v3.13.
-string(
-    JOIN
-    ","
-    DriverModules
-    "-Wl"
-    "--undefined=tx2_ether_qos_ptr"
-    "--undefined=zynq7000_gem_ptr"
-    "--undefined=zynqmp_gem_ptr"
-    "--undefined=imx_fec_ptr"
-    "--undefined=odroidc2_ethernet_ptr"
+# Provide the driver modules by forcing the linker to put symbols into the
+# library, instead of discarding them as unused.
+set(
+    EthernetDriverModules
+    "tx2_ether_qos"
+    "zynq7000_gem"
+    "zynqmp_gem"
+    "imx_fec"
+    "odroidc2_ethernet"
 )
-target_link_libraries(ethdrivers "${DriverModules}")
+foreach(module in LISTS EthernetDriverModules)
+    # Using target_link_libraries() is a bit of a hack, target_link_options()
+    # would be the better way, but this requires CMake v3.13.
+    target_link_libraries(ethdrivers "-Wl,--undefined=${module}_ptr")
+endforeach()
