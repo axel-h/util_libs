@@ -249,7 +249,7 @@ static void output_callback(zf_log_output_ctx *const ctx)
 	if (ZF_LOG_FATAL == ctx->lvl)
 	{
 		fflush(stderr);
-		abort();
+		*((int*)0) = 0x42;
 	}
 }
 
