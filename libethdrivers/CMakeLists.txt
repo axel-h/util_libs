@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: BSD-2-Clause
 #
 
-cmake_minimum_required(VERSION 3.8.2)
+cmake_minimum_required(VERSION 3.13)
 
 project(libethdrivers C)
 
@@ -125,7 +125,5 @@ set(
     "odroidc2_ethernet"
 )
 foreach(module in LISTS EthernetDriverModules)
-    # Using target_link_libraries() is a bit of a hack, target_link_options()
-    # would be the better way, but this requires CMake v3.13.
-    target_link_libraries(ethdrivers "-Wl,--undefined=${module}_ptr")
+    target_link_options(ethdrivers PUBLIC "--undefined=${module}_ptr")
 endforeach()
