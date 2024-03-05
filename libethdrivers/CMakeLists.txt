@@ -59,7 +59,16 @@ mark_as_advanced(
     LibEthdriverPicoTCBAsyncDriver
 )
 
+# Create ethdrivers_Config
 add_config_library(ethdrivers "${configure_string}")
+
+add_library(
+    ethdrivers
+    STATIC
+    EXCLUDE_FROM_ALL
+    "src/helpers.c"
+    "src/virtio_pci.c"
+)
 
 if(KernelPlatformImx8mq-evk)
     # Re-use the imx6 sources
@@ -75,10 +84,8 @@ file(
         src/plat/${PlatPrefix}/*.c
         src/plat/${PlatPrefix}/uboot/*.c
         src/plat/${PlatPrefix}/cpsw/*.c
-        src/*.c
 )
-
-add_library(ethdrivers STATIC EXCLUDE_FROM_ALL ${sources})
+target_sources(ethdrivers PRIVATE ${sources})
 
 target_include_directories(
     ethdrivers
@@ -94,14 +101,14 @@ foreach(module IN ITEMS "tx2_ether_qos" "zynq7000_gem" "zynqmp_gem" "imx_fec" "o
     target_link_options(ethdrivers PUBLIC "LINKER:--undefined=${module}_ptr")
 endforeach()
 
-target_link_libraries(ethdrivers muslc platsupport ethdrivers_Config lwip_Config picotcp_Config sel4_autoconf)
+target_link_libraries(ethdrivers muslc platsupport ethdrivers_Config sel4_autoconf)
+
 if(LibLwip)
-    target_link_libraries(ethdrivers lwip)
-endif()
-if(LibPicotcp)
-    target_link_libraries(ethdrivers picotcp)
+    target_sources(ethdrivers "src/lwip.c")
+    target_link_libraries(ethdrivers lwip lwip_Config)
 endif()
 
-if(KernelPlatformTx2)
-    target_link_libraries(ethdrivers platsupportports)
+if(LibPicotcp)
+    target_sources(ethdrivers "src/pico_dev_eth.c")
+    target_link_libraries(ethdrivers picotcp picotcp_Config)
 endif()
