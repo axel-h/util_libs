@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: BSD-2-Clause
 #
 
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required(VERSION 3.13)
 
 project(libethdrivers C)
 
@@ -91,7 +91,7 @@ target_include_directories(
 # is a bit of a hack, target_link_options() would be the cleaner way, but this
 # requires CMake v3.13.
 foreach(module IN ITEMS "tx2_ether_qos" "zynq7000_gem" "zynqmp_gem" "imx_fec" "odroidc2_ethernet")
-    target_link_libraries(ethdrivers "LINKER:--undefined=${module}_ptr")
+    target_link_options(ethdrivers PUBLIC "LINKER:--undefined=${module}_ptr")
 endforeach()
 
 target_link_libraries(ethdrivers muslc platsupport ethdrivers_Config lwip_Config picotcp_Config sel4_autoconf)

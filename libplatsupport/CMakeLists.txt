@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: BSD-2-Clause
 #
 
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required(VERSION 3.13)
 
 project(libplatsupport C)
 
@@ -101,6 +101,10 @@ else()
     message(FATAL_ERROR "Unsupported KernelArch '${KernelArch}'")
 endif()
 
+foreach(module IN LISTS irqchip_modules)
+    target_link_options(platsupport PUBLIC "LINKER:--undefined=${module}_ptr")
+endforeach()
+
 if(KernelPlatformQEMUArmVirt OR KernelPlatformQuartz64)
     if(KernelArmExportPCNTUser AND KernelArmExportPTMRUser)
         target_sources(platsupport PRIVATE "src/arch/arm/generic_ltimer.c")
@@ -181,10 +185,8 @@ target_include_directories(
         "arch_include/${KernelArch}"
 )
 
-foreach(module IN LISTS irqchip_modules)
-    # Using target_link_libraries() is a bit of a hack, target_link_options()
-    # would be the better way, but this requires CMake v3.13.
-    target_link_libraries(platsupport "LINKER:--undefined=${module}_ptr")
+foreach(module in LISTS irqchip_modules)
+    target_link_options(platsupport PUBLIC "LINKER:--undefined=${module}_ptr")
 endforeach()
 
 target_link_libraries(platsupport muslc utils fdt sel4_autoconf platsupport_Config)
