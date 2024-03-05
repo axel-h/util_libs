@@ -65,6 +65,8 @@ file(
 
 target_sources(platsupport PRIVATE ${platsupport_src})
 
+set(irqchip_modules "")
+
 if(KernelArchARM)
     target_sources(
         platsupport
@@ -84,14 +86,17 @@ if(KernelArchARM)
     list(
         APPEND
             irqchip_modules
-            "-Wl,--undefined=arm_gic_ptr,--undefined=tegra_ictlr_ptr,--undefined=arm_gicv3_ptr,\
---undefined=fsl_avic_ptr,--undefined=ti_omap3_ptr"
+            "arm_gic"
+            "tegra_ictlr"
+            "arm_gicv3"
+            "fsl_avic"
+            "ti_omap3"
     )
 elseif(KernelArchX86)
     target_sources(platsupport PRIVATE "src/arch/x86/delay.c" "src/arch/x86/tsc.c")
 elseif(KernelArchRiscV)
     target_sources(platsupport PRIVATE "src/arch/riscv/irqchip/plic.c")
-    list(APPEND irqchip_modules "-Wl,--undefined=riscv_plic_ptr")
+    list(APPEND irqchip_modules "riscv_plic")
 else()
     message(FATAL_ERROR "Unsupported KernelArch '${KernelArch}'")
 endif()
@@ -176,12 +181,10 @@ target_include_directories(
         "arch_include/${KernelArch}"
 )
 
-target_link_libraries(
-    platsupport
-    muslc
-    utils
-    fdt
-    sel4_autoconf
-    platsupport_Config
-    ${irqchip_modules}
-)
+foreach(module IN LISTS irqchip_modules)
+    # Using target_link_libraries() is a bit of a hack, target_link_options()
+    # would be the better way, but this requires CMake v3.13.
+    target_link_libraries(platsupport "-Wl,--undefined=${module}_ptr")
+endforeach()
+
+target_link_libraries(platsupport muslc utils fdt sel4_autoconf platsupport_Config)

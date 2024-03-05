@@ -86,15 +86,15 @@ target_include_directories(
     PRIVATE "src/plat/${PlatPrefix}/cpsw" "$<TARGET_PROPERTY:virtio,INTERFACE_INCLUDE_DIRECTORIES>"
 )
 
-target_link_libraries(
-    ethdrivers
-    muslc
-    platsupport
-    ethdrivers_Config
-    lwip_Config
-    picotcp_Config
-    sel4_autoconf
-)
+# Provide the driver modules by forcing the linker to put symbols into the
+# library, instead of discarding them as unused. Using target_link_libraries()
+# is a bit of a hack, target_link_options() would be the cleaner way, but this
+# requires CMake v3.13.
+foreach(module IN ITEMS "tx2_ether_qos" "zynq7000_gem" "zynqmp_gem" "imx_fec" "odroidc2_ethernet")
+    target_link_libraries(ethdrivers "-Wl,--undefined=${module}_ptr")
+endforeach()
+
+target_link_libraries(ethdrivers muslc platsupport ethdrivers_Config lwip_Config picotcp_Config sel4_autoconf)
 if(LibLwip)
     target_link_libraries(ethdrivers lwip)
 endif()
@@ -105,20 +105,3 @@ endif()
 if(KernelPlatformTx2)
     target_link_libraries(ethdrivers platsupportports)
 endif()
-
-# Provide the driver modules by forcing the linker to put these symbols in the
-# library, instead of discarding them as unused. Using target_link_libraries()
-# is a bit of a hack, target_link_options() would be the better way, but this
-# requires CMake v3.13.
-string(
-    JOIN
-    ","
-    DriverModules
-    "-Wl"
-    "--undefined=tx2_ether_qos_ptr"
-    "--undefined=zynq7000_gem_ptr"
-    "--undefined=zynqmp_gem_ptr"
-    "--undefined=imx_fec_ptr"
-    "--undefined=odroidc2_ethernet_ptr"
-)
-target_link_libraries(ethdrivers "${DriverModules}")
