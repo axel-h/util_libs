@@ -30,65 +30,134 @@
 #define SERIAL_LSR  5 /* Line Status Register       (R ) */
 #define SERIAL_MSR  6 /* Modem Status Register      (R ) */
 #define SERIAL_SR   7 /* Scratch Register           (RW) */
-#define CONSOLE(port, label) ((port) + (SERIAL_##label))
+
 #define SERIAL_DLAB BIT(7)
 #define SERIAL_LSR_DATA_READY BIT(0)
 #define SERIAL_LSR_TRANSMITTER_EMPTY BIT(5)
 
+/*
+ *******************************************************************************
+ * UART access primitives
+ *******************************************************************************
+ */
+
+static uint32_t get_console_io_port(
+    ps_chardevice_t *device,
+    unsigned int offset)
+{
+    /* Casting points to a specific integer directly is not allowed, must cast
+     * to uintptr_t and then cast to a specific integer type.
+     */
+    return (uint32_t)((uintptr_t)device->vaddr) + offset;
+}
+
+static void console_io_port_read(
+    ps_chardevice_t *device,
+    unsigned int port_offset,
+    uint32_t *data)
+{
+    return ps_io_port_in(
+                &device->ioops.io_port_ops,
+                get_console_io_port(device, port_offset),
+                1, /* io_size */
+                data);
+}
+
+static void console_io_port_write(
+    ps_chardevice_t *device,
+    unsigned int port_offset,
+    uint32_t data)
+{
+    return ps_io_port_out(
+                &device->ioops.io_port_ops,
+                get_console_io_port(device, port_offset),
+                1, /* io_size */
+                data);
+}
+
+static int serial_is_tx_ready(ps_chardevice_t* device)
+{
+    uint32_t data;
+    int ret = console_io_port_read(device, SERIAL_LSR, &data);
+    if (ret != 0) {
+        return 0; /* claim transmitter is not ready */
+    }
+    return data & SERIAL_LSR_TRANSMITTER_EMPTY;
+}
+
+static int serial_tx_byte(ps_chardevice_t* device, uint8_t byte)
+{
+    return console_io_port_write(device, SERIAL_THR, byte);
+}
+
+static void internal_serial_busy_wait_tx_ready(ps_chardevice_t* device)
+{
+    while (!serial_is_tx_ready(device)) {
+        /* busy waiting loop */
+    }
+}
+
+/*
+ *******************************************************************************
+ * UART access API
+ *******************************************************************************
+ */
+
 int uart_getchar(ps_chardevice_t *device)
 {
-    uint32_t res;
-    uint32_t io_port = (uint32_t) (uintptr_t)device->vaddr;
+    int ret;
+    uint32_t data;
 
     /* Check if character is available. */
-    int error = ps_io_port_in(&device->ioops.io_port_ops, CONSOLE(io_port, LSR), 1, &res);
-    if (error != 0) {
+    ret = console_io_port_read(device, SERIAL_LSR, &data);
+    if (ret != 0) {
         return -1;
     }
-    if (!(res & SERIAL_LSR_DATA_READY)) {
+    if (!(data & SERIAL_LSR_DATA_READY)) {
         return -1;
     }
 
     /* retrieve character */
-    error = ps_io_port_in(&device->ioops.io_port_ops, CONSOLE(io_port, RBR), 1, &res);
-    if (error != 0) {
+    ret = console_io_port_read(device, SERIAL_RBR, &data);
+    if (ret != 0) {
         return -1;
     }
 
-    return (int) res;
-}
-
-static int serial_ready(ps_chardevice_t* device)
-{
-    uint32_t io_port = (uint32_t) (uintptr_t)device->vaddr;
-    uint32_t res;
-    int error = ps_io_port_in(&device->ioops.io_port_ops, CONSOLE(io_port, LSR), 1, &res);
-    if (error != 0) {
-        return 0;
-    }
-    return res & SERIAL_LSR_TRANSMITTER_EMPTY;
+    return (uint8_t)data;
 }
 
 int uart_putchar(ps_chardevice_t* device, int c)
 {
-    uint32_t io_port = (uint32_t) (uintptr_t)device->vaddr;
-
-    /* Check if serial is ready. */
-    if (!serial_ready(device)) {
-        return -1;
+    /* Check if the TX FIFO has space. If not and SERIAL_TX_NONBLOCKING is set,
+     * then fail the call, otherwise do busy waiting.
+     */
+    if (!serial_is_tx_ready(device))
+        if (d->flags & SERIAL_TX_NONBLOCKING) {
+            return -1;
+        }
+        internal_serial_busy_wait_tx_ready(device);
     }
 
-    /* Write out the next character. */
-    ps_io_port_out(&device->ioops.io_port_ops, CONSOLE(io_port, THR), 1, c);
+    /* Extract the byte to send, drop any flags. */
+    uint8_t byte = (uint8_t)c;
 
-    if (c == '\n') {
-        /* If we output immediately then odds are the transmit buffer
-         * will be full, so we have to wait */
-        while (!serial_ready(device));
-        uart_putchar(device, '\r');
+    /* SERIAL_AUTO_CR enables sending a CR before any LF, which is the common
+     * thing to do for a serial terminal. CR/LR are considered an atom, thus a
+     * blocking wait will be used even if SERIAL_TX_NONBLOCKING is set to ensure
+     * LF is sent.
+     * TODO: Check in advance if the TX FIFO has space for two chars if
+     *       SERIAL_TX_NONBLOCKING is set.
+     */
+     if ((byte == '\n') && (d->flags & SERIAL_AUTO_CR)) {
+        /* Write CR, ignore the return code. */
+        (void)serial_tx_byte(device, '\r');
+        internal_serial_busy_wait_tx_ready(device);
     }
 
-    return c;
+    /* Write out the character, ignore return code. */
+    (void)serial_tx_byte(device, byte);
+
+    return byte;
 }
 
 static void uart_handle_irq(ps_chardevice_t* device UNUSED)
@@ -108,58 +177,58 @@ uart_init(const struct dev_defn* defn, const ps_io_ops_t* ops, ps_chardevice_t* 
     dev->handle_irq = &uart_handle_irq;
     dev->irqs       = defn->irqs;
     dev->ioops      = *ops;
+    dev->flags      = SERIAL_AUTO_CR;
 
     /* Initialise the device. */
-    uint32_t io_port = (uint32_t) (uintptr_t)dev->vaddr;
 
     /* clear DLAB - Divisor Latch Access Bit */
-    if (ps_io_port_out(&dev->ioops.io_port_ops, CONSOLE(io_port, LCR), 1, 0x00 & ~SERIAL_DLAB) != 0) {
+    if (console_io_port_write(dev, SERIAL_LCR, 0x00 & ~SERIAL_DLAB) != 0) {
         return -1;
     }
 
     /* disable generating interrupts */
-    if (ps_io_port_out(&dev->ioops.io_port_ops, CONSOLE(io_port, IER), 1, 0x00) != 0) {
+    if (console_io_port_write(dev, SERIAL_IER, 0x00) != 0) {
         return -1;
     }
 
     /* set DLAB to*/
-    if (ps_io_port_out(&dev->ioops.io_port_ops, CONSOLE(io_port, LCR), 1, 0x00 | SERIAL_DLAB) != 0) {
+    if (console_io_port_write(dev, SERIAL_LCR, 0x00 | SERIAL_DLAB) != 0) {
         return -1;
     }
     /* set low byte of divisor to 0x01 = 115200 baud */
-    if (ps_io_port_out(&dev->ioops.io_port_ops, CONSOLE(io_port, DLL), 1, 0x01) != 0) {
+    if (console_io_port_write(dev, SERIAL_DLL, 0x01) != 0) {
         return -1;
     }
     /* set high byte of divisor to 0x00 */
-    if (ps_io_port_out(&dev->ioops.io_port_ops, CONSOLE(io_port, DLH), 1, 0x00) != 0) {
+    if (console_io_port_write(dev, SERIAL_DLH, 0x00) != 0) {
         return -1;
     }
 
     /* line control register: set 8 bit, no parity, 1 stop bit; clear DLAB */
-    if (ps_io_port_out(&dev->ioops.io_port_ops, CONSOLE(io_port, LCR), 1, 0x03 & ~SERIAL_DLAB) != 0) {
+    if (console_io_port_write(dev, SERIAL_LCR, 0x03 & ~SERIAL_DLAB) != 0) {
         return -1;
     }
     /* modem control register: set DTR/RTS/OUT2 */
-    if (ps_io_port_out(&dev->ioops.io_port_ops, CONSOLE(io_port, MCR), 1, 0x0b) != 0) {
+    if (console_io_port_write(dev, SERIAL_MCR, 0x0b) != 0) {
         return -1;
     }
 
     uint32_t temp;
     /* clear receiver port */
-    if (ps_io_port_in(&dev->ioops.io_port_ops, CONSOLE(io_port, RBR), 1, &temp) != 0) {
+    if (console_io_port_write(dev, SERIAL_RBR, &temp) != 0) {
         return -1;
     }
     /* clear line status port */
-    if (ps_io_port_in(&dev->ioops.io_port_ops, CONSOLE(io_port, LSR), 1, &temp) != 0) {
+    if (console_io_port_write(dev, SERIAL_LSR, &temp) != 0) {
         return -1;
     }
     /* clear modem status port */
-    if (ps_io_port_in(&dev->ioops.io_port_ops, CONSOLE(io_port, MSR), 1, &temp) != 0) {
+    if (console_io_port_write(dev, SERIAL_MSR, &temp) != 0) {
         return -1;
     }
 
     /* Enable the receiver interrupt. */
-    if (ps_io_port_out(&dev->ioops.io_port_ops, CONSOLE(io_port, IER), 1, 0x01) != 0) {
+    if (console_io_port_write(dev, SERIAL_IER, 0x01) != 0) {
         return -1;
     }
 

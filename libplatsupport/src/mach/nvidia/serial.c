@@ -94,6 +94,12 @@ struct tk1_uart_regs {
 };
 typedef volatile struct tk1_uart_regs tk1_uart_regs_t;
 
+/*
+ *******************************************************************************
+ * UART access primitives
+ *******************************************************************************
+ */
+
 static inline tk1_uart_regs_t*
 tk1_uart_get_priv(ps_chardevice_t *d)
 {
@@ -139,6 +145,31 @@ tk1_uart_set_rbr_irq(tk1_uart_regs_t *regs, bool enable)
     regs->ier_dlab = ier;
 }
 
+static int
+internal_uart_tx_busy(tk1_uart_regs_t* regs)
+{
+    return ((regs->lsr & LSR_THRE_EMPTY) != LSR_THRE_EMPTY);
+}
+
+static int
+internal_uart_tx(tk1_uart_regs_t* regs, uint8_t c)
+{
+    regs->thr_dlab = c;
+}
+
+static void internal_uart_busy_wait_tx_ready(tk1_uart_regs_t* regs)
+{
+    while (internal_uart_tx_busy(regs)) {
+        /* busy waiting loop */
+    }
+}
+
+/*
+ *******************************************************************************
+ * UART access API
+ *******************************************************************************
+ */
+
 int uart_getchar(ps_chardevice_t *d)
 {
     tk1_uart_regs_t* regs = tk1_uart_get_priv(d);
@@ -155,19 +186,35 @@ int uart_getchar(ps_chardevice_t *d)
 int uart_putchar(ps_chardevice_t* d, int c)
 {
     tk1_uart_regs_t* regs = tk1_uart_get_priv(d);
-    uint32_t lsr = regs->lsr;
 
-    if (((lsr & LSR_THRE_EMPTY) == LSR_THRE_EMPTY)) {
-        if (c == '\n' && (d->flags & SERIAL_AUTO_CR)) {
-            uart_putchar(d, '\r');
+    /* Check if the TX FIFO has space. If not and SERIAL_TX_NONBLOCKING is set,
+     * then fail the call, otherwise do busy waiting.
+     */
+    if (internal_uart_tx_busy(regs)) {
+        if (d->flags & SERIAL_TX_NONBLOCKING) {
+            return -1;
         }
-
-        regs->thr_dlab = (uint8_t) c;
-
-        return c;
-    } else {
-        return -1;
+        internal_uart_busy_wait_tx_ready(reg_base);
     }
+
+    /* Extract the byte to send, drop any flags. */
+    uint8_t byte = (uint8_t)c;
+
+    /* SERIAL_AUTO_CR enables sending a CR before any LF, which is the common
+     * thing to do for a serial terminal. CR/LR are considered an atom, thus a
+     * blocking wait will be used even if SERIAL_TX_NONBLOCKING is set to ensure
+     * LF is sent.
+     * TODO: Check in advance if the TX FIFO has space for two chars if
+     *       SERIAL_TX_NONBLOCKING is set.
+     */
+     if ((byte == '\n') && (d->flags & SERIAL_AUTO_CR)) {
+        internal_uart_tx(regs, '\r');
+        internal_uart_busy_wait_tx_ready(regs);
+    }
+
+    internal_uart_tx(regs, byte);
+
+    return byte;
 }
 
 static void
