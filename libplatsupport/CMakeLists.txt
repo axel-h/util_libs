@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: BSD-2-Clause
 #
 
-cmake_minimum_required(VERSION 3.7.2)
+cmake_minimum_required(VERSION 3.13)
 
 project(libplatsupport C)
 
@@ -43,61 +43,82 @@ elseif(NOT ${KernelArmMach} STREQUAL "")
     set(LibPlatSupportMach "${KernelArmMach}")
 endif()
 
-file(
-    GLOB
-        deps
-        src/plat/${KernelPlatform}/*.c
-        src/*.c
-        src/plat/${KernelPlatform}/acpi/*.c
+add_library(
+    platsupport
+    EXCLUDE_FROM_ALL
+    "src/fdt.c"
+    "src/io.c"
+    "src/local_time_manager.c"
+    "src/serial.c"
+    "src/tqueue.c"
 )
 
-if(NOT ${LibPlatSupportMach} STREQUAL "")
-    file(GLOB lib_deps "src/mach/${LibPlatSupportMach}/*.c")
-    list(APPEND deps ${lib_deps})
-endif()
+add_config_library(platsupport "${configure_string}")
+
+file(
+    GLOB
+        platsupport_src
+        CONFIGURE_DEPENDS
+        "src/plat/${KernelPlatform}/*.c"
+        "src/plat/${KernelPlatform}/acpi/*.c"
+)
+
+target_sources(platsupport PRIVATE ${platsupport_src})
+
+set(irqchip_modules "")
 
 if(KernelArchARM)
-    list(APPEND deps src/arch/arm/clock.c)
-    list(APPEND deps src/arch/arm/delay.c)
-    list(APPEND deps src/arch/arm/dma330.c)
-    list(APPEND deps src/arch/arm/i2c.c)
-    list(APPEND deps src/arch/arm/i2c_bitbang.c)
-    list(APPEND deps src/arch/arm/generic_timer.c)
-    list(APPEND deps src/arch/arm/irqchip/gic.c)
-    list(APPEND deps src/arch/arm/irqchip/tegra.c)
-    list(APPEND deps src/arch/arm/irqchip/gicv3.c)
-    list(APPEND deps src/arch/arm/irqchip/omap3.c)
+    target_sources(
+        platsupport
+        PRIVATE
+        "src/arch/arm/clock.c"
+        "src/arch/arm/delay.c"
+        "src/arch/arm/dma330.c"
+        "src/arch/arm/i2c.c"
+        "src/arch/arm/i2c_bitbang.c"
+        "src/arch/arm/generic_timer.c"
+        "src/arch/arm/irqchip/gic.c"
+        "src/arch/arm/irqchip/tegra.c"
+        "src/arch/arm/irqchip/gicv3.c"
+        "src/arch/arm/irqchip/omap3.c"
+    )
     # Link the IRQ chip parser modules
     list(
         APPEND
             irqchip_modules
-            "-Wl,--undefined=arm_gic_ptr,--undefined=tegra_ictlr_ptr,--undefined=arm_gicv3_ptr,\
---undefined=fsl_avic_ptr,--undefined=ti_omap3_ptr"
+            "arm_gic"
+            "tegra_ictlr"
+            "arm_gicv3"
+            "fsl_avic"
+            "ti_omap3"
     )
 elseif(KernelArchX86)
-    list(APPEND deps src/arch/x86/delay.c)
-    list(APPEND deps src/arch/x86/tsc.c)
+    target_sources(platsupport PRIVATE "src/arch/x86/delay.c" "src/arch/x86/tsc.c")
 elseif(KernelArchRiscV)
-    list(APPEND deps src/arch/riscv/irqchip/plic.c)
-    list(APPEND irqchip_modules "-Wl,--undefined=riscv_plic_ptr")
+    target_sources(platsupport PRIVATE "src/arch/riscv/irqchip/plic.c")
+    list(APPEND irqchip_modules "riscv_plic")
 else()
     message(FATAL_ERROR "Unsupported KernelArch '${KernelArch}'")
 endif()
 
+foreach(module IN LISTS irqchip_modules)
+    target_link_options(platsupport PUBLIC "LINKER:--undefined=${module}_ptr")
+endforeach()
+
 if(KernelPlatformQEMUArmVirt OR KernelPlatformQuartz64)
     if(KernelArmExportPCNTUser AND KernelArmExportPTMRUser)
-        list(APPEND deps src/arch/arm/generic_ltimer.c)
+        target_sources(platsupport PRIVATE "src/arch/arm/generic_ltimer.c")
     endif()
 endif()
 
 if(KernelPlatformExynos5422)
-    list(APPEND deps src/mach/${LibPlatSupportMach}/clock/exynos_5422_clock.c)
+    target_sources(platsupport PRIVATE "src/mach/${LibPlatSupportMach}/clock/exynos_5422_clock.c")
 elseif(KernelPlatformExynos4 OR KernelPlatformExynos5410 OR KernelPlatformExynos5250)
-    list(APPEND deps src/mach/${LibPlatSupportMach}/clock/exynos_common_clock.c)
+    target_sources(platsupport PRIVATE "src/mach/${LibPlatSupportMach}/clock/exynos_common_clock.c")
 endif()
 
 if(KernelPlatImx6 OR KernelPlatformImx7Sabre)
-    list(APPEND deps src/mach/${LibPlatSupportMach}/epit/epit.c)
+    target_sources(platsupport PRIVATE "src/mach/${LibPlatSupportMach}/epit/epit.c")
 endif()
 
 if(
@@ -108,14 +129,23 @@ if(
     OR KernelPlatformImx8mp-evk
     OR KernelPlatformMaaxboard
 )
-    list(APPEND deps src/mach/${LibPlatSupportMach}/serial/serial.c)
+    target_sources(platsupport PRIVATE "src/mach/${LibPlatSupportMach}/serial/serial.c")
 endif()
 
 if(KernelPlatImx8mq OR KernelPlatformImx8mm-evk OR KernelPlatformImx8mp-evk)
-    list(APPEND deps src/plat/imx8m/chardev.c)
-    # There's no clock driver at the moment, but this is to allow the
-    # libethdrivers to build for imx8mq
-    list(APPEND deps src/plat/imx8m/clock.c)
+    if(KernelPlatformImx8mp-evk)
+        # For the imx8mp, the DTS is in a different format compared to those of
+        # the imx8mm and imx8mq, there are some constants in the headers that
+        # point to the proper path
+        target_compile_definitions(platsupport PRIVATE USE_IMX8MP_GPT_PATH)
+    endif()
+    target_sources(
+        platsupport PRIVATE "src/plat/imx8m/chardev.c"
+        # There's no clock driver at the moment, but this is to allow the
+        # libethdrivers to build for imx8mq
+        "src/plat/imx8m/clock.c"
+    )
+    target_include_directories(platsupport PUBLIC "plat_include/imx8m")
 endif()
 
 if(KernelPlatPC99)
@@ -127,31 +157,17 @@ if(KernelPlatPC99)
     )
 endif()
 
-list(SORT deps)
-
-add_config_library(platsupport "${configure_string}")
-
-add_library(platsupport EXCLUDE_FROM_ALL ${deps})
-
-if(KernelPlatImx8mq OR KernelPlatformImx8mm-evk OR KernelPlatformImx8mp-evk)
-    if(KernelPlatformImx8mp-evk)
-        # For the imx8mp, the DTS is in a different format compared to those of
-        # the imx8mm and imx8mq, there are some constants in the headers that
-        # point to the proper path
-        target_compile_definitions(platsupport PRIVATE USE_IMX8MP_GPT_PATH)
-    endif()
-    target_include_directories(platsupport PUBLIC plat_include/imx8m)
-endif()
-
 if(KernelPlatformZynqmp)
     # This still needs to be cleaned up, so there is a mach folder "zynqmp" and
     # the board specific folders "zcu102" and "ultra96". Then we don't need to
     # include this folder here explicitly
-    target_include_directories(platsupport PUBLIC plat_include/zynqmp)
+    target_include_directories(platsupport PUBLIC "plat_include/zynqmp")
 endif()
 
 if(NOT "${LibPlatSupportMach}" STREQUAL "")
-    target_include_directories(platsupport PUBLIC mach_include/${LibPlatSupportMach})
+    file(GLOB mach_src CONFIGURE_DEPENDS "src/mach/${LibPlatSupportMach}/*.c")
+    target_sources(platsupport PRIVATE ${mach_src})
+    target_include_directories(platsupport PUBLIC "mach_include/${LibPlatSupportMach}")
 endif()
 
 # special handling for "arm_hyp", it's an add-on-hack over "aarch32"
@@ -163,18 +179,14 @@ endif()
 target_include_directories(
     platsupport
     PUBLIC
-        include
-        plat_include/${KernelPlatform}
-        sel4_arch_include/${_inc_folder_KernelSel4Arch}
-        arch_include/${KernelArch}
+        "include"
+        "plat_include/${KernelPlatform}"
+        "sel4_arch_include/${_inc_folder_KernelSel4Arch}"
+        "arch_include/${KernelArch}"
 )
 
-target_link_libraries(
-    platsupport
-    muslc
-    utils
-    fdt
-    sel4_autoconf
-    platsupport_Config
-    ${irqchip_modules}
-)
+foreach(module in LISTS irqchip_modules)
+    target_link_options(platsupport PUBLIC "LINKER:--undefined=${module}_ptr")
+endforeach()
+
+target_link_libraries(platsupport muslc utils fdt sel4_autoconf platsupport_Config)
